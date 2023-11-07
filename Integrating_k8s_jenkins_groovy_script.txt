@@ -1,0 +1,59 @@
+pipeline {
+    agent {
+        label "slave_node_1"
+    }
+    stages {
+        
+        stage ('SCM') {
+            steps {
+                echo "check out from git"
+                git 'https://github.com/iimrankhan98/docker-repo.git'
+            
+            }
+        }
+
+        stage ('Build') {
+            steps {
+                echo "docker image build"
+                sh "sudo docker build -t iimrankhan98/javaweb:${BUILD_ID} ."
+            }
+        }
+        
+        stage ('Push Image') {
+            steps {
+                withCredentials([string(credentialsId: 'DOCKER_HUB_PASSWD', variable: 'DOCKER_HUB_PASS_CODE')]) {
+    // some block
+                sh "sudo docker login -u iimrankhan98 -p $DOCKER_HUB_PASS_CODE"
+}
+                
+                sh "sudo docker push iimrankhan98/javaweb:${BUILD_ID}"
+            }
+        }
+        
+        stage ('Deploy WebApp in DEV') {
+            steps {
+                sh "sudo docker rm -f java-app"
+                echo "launch docker container"
+                sh "sudo docker run -dit --name java-app -p 8080:8080 iimrankhan98/javaweb:${BUILD_ID}"
+            }
+        }
+        
+        stage ('Deploy on PROD') {
+            steps {
+                
+                sshagent(['QA_ENV_SSH_CRED']) {
+                    
+                    sh "ssh  -o  StrictHostKeyChecking=no ec2-user@65.2.152.143 sudo kubectl delete all --all"
+                    sh "ssh ec2-user@65.2.152.143 sudo kubectl create deployment mydd --image=iimrankhan98/javaweb:${BUILD_ID}"
+                    sh "ssh ec2-user@65.2.152.143 sudo kubectl expose deployment mydd --port=80 --type=NodePort"
+                    sh "ssh ec2-user@65.2.152.143 sudo kubectl scale deployment mydd --replicas=5"
+                }
+            }
+            
+        }
+        
+        
+    }
+
+    
+}
